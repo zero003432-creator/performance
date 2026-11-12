@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>專案績效與分段解鎖管理系統 v10.1 (跨年度認列與權限強化版)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS (XLSX Library) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1',
+                            400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155',
+                            800: '#1e293b', 900: '#0f172a',
+                        },
+                        indigo: {
+                            50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
+
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm backdrop-blur-md bg-white/90">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-wrap items-center justify-between min-h-16 py-2 gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center shadow-md shadow-indigo-500/20 text-white font-bold text-xl">
+                        <i class="fa-solid fa-chart-line"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">專案績效與分段解鎖管理系統</h1>
+                        <span class="text-xs text-indigo-600 font-semibold font-mono">v10.3 Dynamic Custom Year Management</span>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <!-- 全域結算年度篩選 -->
+                    <div class="flex items-center gap-1.5 bg-indigo-50 p-1.5 rounded-lg border border-indigo-200">
+                        <label class="text-xs font-bold text-indigo-700 hidden sm:inline-block px-1"><i class="fa-regular fa-calendar-check"></i> 結算年度:</label>
+                        <select id="globalYearFilter" onchange="onGlobalYearChange()" class="bg-white border border-indigo-300 text-xs sm:text-sm rounded-md px-2.5 py-1 text-indigo-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="ALL">全部累積 (All Years)</option>
+                            <option value="2025">2025 年度</option>
+                            <option value="2026" selected>2026 年度</option>
+                            <option value="2027">2027 年度</option>
+                            <option value="2028">2028 年度</option>
+                            <option value="2029">2029 年度</option>
+                            <option value="2030">2030 年度</option>
+                        </select>
+                    </div>
+
+                    <!-- 團隊篩選 -->
+                    <div class="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-lg border border-slate-200">
+                        <label class="text-xs font-semibold text-slate-500 hidden sm:inline-block px-1"><i class="fa-solid fa-filter"></i> 團隊:</label>
+                        <select id="globalTeamFilter" onchange="renderAll()" class="bg-white border border-slate-300 text-xs sm:text-sm rounded-md px-2.5 py-1 text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="ALL">全部團隊 (All Teams)</option>
+                        </select>
+                    </div>
+
+                    <!-- 角色切換（預設為一般成員，切換至管理員需輸入密碼 abcd） -->
+                    <div class="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+                        <button type="button" id="roleMemberBtn" onclick="requestRoleSwitch('member')" class="px-2.5 py-1 rounded-md text-xs font-semibold transition bg-slate-700 text-white shadow-sm">
+                            <i class="fa-solid fa-user mr-1"></i>一般成員
+                        </button>
+                        <button type="button" id="roleAdminBtn" onclick="requestRoleSwitch('admin')" class="px-2.5 py-1 rounded-md text-xs font-semibold transition text-slate-600 hover:text-slate-900">
+                            <i class="fa-solid fa-user-gear mr-1"></i>管理員 (Admin)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden group hover:border-indigo-200 transition">
+                <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">專案總數量</p>
+                <h3 id="kpiProjectCount" class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">0</h3>
+                <p id="kpiProjectCountDesc" class="text-xs text-slate-400 mt-2">清單內案件總數</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden group hover:border-blue-200 transition">
+                <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">總配額 (Base Score)</p>
+                <h3 id="kpiTotalBase" class="text-2xl sm:text-3xl font-black text-blue-600 mt-1">0.00</h3>
+                <p class="text-xs text-slate-400 mt-2">評分與難易度加給上限</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden group hover:border-emerald-200 transition">
+                <p id="kpiRecognizedTitle" class="text-xs font-bold text-slate-500 uppercase tracking-wider">2026 年度認列得分</p>
+                <h3 id="kpiTotalRecognized" class="text-2xl sm:text-3xl font-black text-emerald-600 mt-1">0.00</h3>
+                <p class="text-xs text-slate-400 mt-2">依據選定年度解鎖認列</p>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden group hover:border-amber-200 transition">
+                <p id="kpiRatioTitle" class="text-xs font-bold text-slate-500 uppercase tracking-wider">當期年度認列佔比</p>
+                <h3 id="kpiUnlockRatio" class="text-2xl sm:text-3xl font-black text-amber-500 mt-1">0%</h3>
+                <div class="w-full bg-slate-100 rounded-full h-1.5 mt-3 overflow-hidden">
+                    <div id="kpiProgressBar" class="bg-amber-400 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+        </section>
+
+        <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
+            <div class="flex gap-1 overflow-x-auto">
+                <button type="button" id="tabBtn1" onclick="switchTab(1)" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 bg-indigo-600 text-white shadow-md shadow-indigo-600/20 whitespace-nowrap">
+                    <i class="fa-solid fa-list-check"></i> 專案輸入與總表
+                </button>
+                <button type="button" id="tabBtn2" onclick="switchTab(2)" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 whitespace-nowrap">
+                    <i class="fa-solid fa-trophy text-amber-500"></i> 人員績效排行榜
+                </button>
+                <button type="button" id="tabBtn3" onclick="switchTab(3)" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 whitespace-nowrap">
+                    <i class="fa-solid fa-gear text-slate-500"></i> 系統設定與權限管理
+                </button>
+            </div>
+
+            <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <button type="button" onclick="exportCombinedExcel()" class="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-600 px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-file-excel text-sm"></i> 匯出整合報表 (.xlsx)
+                </button>
+                <button type="button" onclick="exportFullBackupJSON()" class="flex-1 sm:flex-none bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-download text-indigo-600"></i> 匯出系統備份 (.json)
+                </button>
+                <label class="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm">
+                    <i class="fa-solid fa-upload"></i> 匯入備份檔
+                    <input type="file" id="importJsonInput" accept=".json" onchange="importFullBackupJSON(event)" class="hidden">
+                </label>
+            </div>
+        </div>
+
+        <div id="tabContent1" class="space-y-6">
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+                    <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-pen-to-square text-indigo-600"></i> <span id="formTitle">新增專案試算</span>
+                    </h2>
+                    <span class="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
+                        <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i>勾選階段時可指定各自的<strong>認列年度</strong>，跨年案件無需重複建檔
+                    </span>
+                </div>
+
+                <form id="projectForm" onsubmit="handleFormSubmit(event)" class="space-y-4">
+                    <input type="hidden" id="editProjectId" value="">
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-slate-700 mb-1">專案名稱 *</label>
+                            <input type="text" id="inputName" required placeholder="例如：CNC智慧控制模組開發" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">歸屬團隊 *</label>
+                            <select id="inputTeam" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                            <div class="flex justify-between items-center">
+                                <label class="block text-xs font-bold text-slate-800">主導同仁 (單選) *</label>
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] text-slate-500 font-semibold">主導配比:</span>
+                                    <input type="number" id="inputLeaderRatio" min="0" max="100" value="60" oninput="onLeaderRatioChange()" class="w-16 bg-white border border-slate-300 rounded-lg px-2 py-0.5 text-xs text-right font-bold text-indigo-600 font-mono">
+                                    <span class="text-xs text-slate-500 font-bold">%</span>
+                                </div>
+                            </div>
+                            <select id="inputLeaders" required onchange="onLeaderSelectionChange()" class="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-sm text-slate-900">
+                            </select>
+                        </div>
+
+                        <div class="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                            <div class="flex justify-between items-center">
+                                <label class="block text-xs font-bold text-slate-800">協助同仁</label>
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] text-slate-500 font-semibold">協助配比:</span>
+                                    <input type="number" id="inputAssistantRatio" min="0" max="100" value="40" oninput="onAssistantRatioChange()" class="w-16 bg-white border border-slate-300 rounded-lg px-2 py-0.5 text-xs text-right font-bold text-slate-600 font-mono">
+                                    <span class="text-xs text-slate-500 font-bold">%</span>
+                                </div>
+                            </div>
+                            <select id="inputAssistants" multiple onchange="onAssistantSelectionChange()" class="w-full bg-white border border-slate-300 rounded-xl p-2 text-sm text-slate-900 h-24">
+                            </select>
+                            <div class="flex justify-between items-center text-[11px] text-slate-400">
+                                <span>按住 Ctrl / Cmd 可多選</span>
+                                <label class="inline-flex items-center gap-1 cursor-pointer text-slate-600 font-medium">
+                                    <input type="checkbox" id="chkSplitAssistant" checked onchange="toggleAssistantSplitMode()" class="rounded text-indigo-600 w-3.5 h-3.5"> 多人時平分配比
+                                </label>
+                            </div>
+                            <div id="customAssistantRatioContainer" class="hidden space-y-1.5 pt-2 border-t border-slate-200 mt-2"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">角色分 (Role)</label>
+                            <select id="inputRole" onchange="calculatePreview()" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm"></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">性質分 (Type)</label>
+                            <select id="inputType" onchange="calculatePreview()" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm"></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">預算分 (Budget)</label>
+                            <select id="inputBudget" onchange="calculatePreview()" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm"></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 mb-1">難易度 (Difficulty)</label>
+                            <select id="inputDifficulty" onchange="calculatePreview()" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm"></select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex flex-wrap justify-between items-center mb-2 gap-2">
+                            <label class="block text-xs font-bold text-slate-700">階段驗收與解鎖進度（勾選後可選擇認列年度）</label>
+                            <span id="previewCumulativeNote" class="text-[11px] text-slate-500 font-mono">全案累積解鎖：0%</span>
+                        </div>
+                        <div id="dynamicPhaseCheckboxes" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3"></div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 border-t border-slate-100">
+                        <div class="flex flex-wrap items-center gap-4 text-xs sm:text-sm">
+                            <div><span class="text-slate-500">Base Score 總額:</span> <span id="previewBase" class="font-black text-blue-600 font-mono text-base ml-1">0.00</span></div>
+                            <div><span id="previewYearLabel" class="text-slate-500">2026年認列得分:</span> <span id="previewRecognized" class="font-black text-emerald-600 font-mono text-base ml-1">0.00</span></div>
+                            <div class="text-xs bg-slate-100 px-2.5 py-1 rounded-lg text-slate-600 font-mono">
+                                當期切分: <span id="previewLeaderEarn" class="text-indigo-600 font-bold">主導 0.00分</span> / <span id="previewAssistantEarn" class="text-emerald-600 font-bold">協助 0.00分</span>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-2 w-full sm:w-auto">
+                            <button type="button" id="btnCancelEdit" onclick="resetForm()" class="hidden px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold">取消編輯</button>
+                            <button type="submit" id="btnSubmit" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/20">
+                                <i class="fa-solid fa-plus mr-1"></i> 新增專案
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 專案列表總覽 -->
+            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3">
+                    <div class="flex items-center flex-wrap gap-2">
+                        <h3 class="font-bold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-table-list text-indigo-600"></i> 專案列表總覽
+                            <span id="tableCountBadge" class="text-xs bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full font-semibold">共 0 筆</span>
+                        </h3>
+                        <!-- 2. 新增：專案列表總覽內直接切換結算年度的同步選單 -->
+                        <div class="flex items-center gap-1.5 bg-indigo-50 px-2.5 py-1 rounded-xl border border-indigo-200">
+                            <span class="text-xs font-bold text-indigo-700"><i class="fa-regular fa-calendar-check mr-1"></i>檢視年度:</span>
+                            <select id="tableYearFilter" onchange="onTableYearChange()" class="bg-white border border-indigo-300 text-xs rounded-lg px-2 py-0.5 text-indigo-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="ALL">全部累積</option>
+                                <option value="2025">2025 年</option>
+                                <option value="2026" selected>2026 年</option>
+                                <option value="2027">2027 年</option>
+                                <option value="2028">2028 年</option>
+                                <option value="2029">2029 年</option>
+                                <option value="2030">2030 年</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <div class="relative flex-1 sm:flex-none">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                            </span>
+                            <input type="text" id="tableSearchInput" oninput="renderAll()" placeholder="搜尋專案、成員或團隊..." class="bg-slate-50 border border-slate-300 text-xs rounded-xl pl-9 pr-3 py-1.5 text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-52">
+                        </div>
+                        <select id="tableStatusFilter" onchange="renderAll()" class="bg-slate-50 border border-slate-300 text-xs rounded-xl px-3 py-1.5 text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="ALL">全部專案狀態</option>
+                            <option value="ACTIVE_IN_YEAR">僅顯示選定年度有認列得分</option>
+                            <option value="INCOMPLETE">僅顯示未結案 (累積 &lt; 100%)</option>
+                            <option value="COMPLETED">僅顯示已結案 (累積 = 100%)</option>
+                        </select>
+                        <select id="tableSortSelect" onchange="renderAll()" class="bg-slate-50 border border-slate-300 text-xs rounded-xl px-3 py-1.5 text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="default">預設排序 (依建立)</option>
+                            <option value="base_desc">Base 配額 (高至低)</option>
+                            <option value="stage_desc">當期認列比例 (高至低)</option>
+                            <option value="recognized_desc">當期認列得分 (高至低)</option>
+                            <option value="name_asc">專案名稱 (筆畫/字首)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs sm:text-sm text-slate-700">
+                        <thead class="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="py-3 px-4 min-w-[170px]">專案名稱 / 歸屬團隊</th>
+                                <th class="py-3 px-4">參與成員 (含當期認列分數)</th>
+                                <!-- 5. 評分公式欄位加寬且不換行 -->
+                                <th class="py-3 px-4 whitespace-nowrap min-w-[155px]">評分公式</th>
+                                <!-- 4. Base 配額欄位加寬且強制單行顯示 -->
+                                <th class="py-3 px-4 text-right whitespace-nowrap min-w-[115px]">Base 配額</th>
+                                <th class="py-3 px-4 text-center min-w-[230px]">解鎖進度與年度明細</th>
+                                <th id="thRecognizedCol" class="py-3 px-4 text-right whitespace-nowrap min-w-[125px]">2026年認列得分</th>
+                                <th class="py-3 px-4 text-center whitespace-nowrap min-w-[85px]">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="projectTableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 績效排行榜 -->
+        <div id="tabContent2" class="space-y-6 hidden">
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+                <div class="border-b border-slate-100 pb-4 mb-5 flex flex-wrap justify-between items-center gap-2">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-trophy text-amber-500"></i> <span id="leaderboardTitle">2026 年度個人績效認列排行榜</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">點擊同仁姓名或整行即可展開／收合該同仁於選定年度獲得分數的專案明細</p>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs sm:text-sm text-slate-700">
+                        <thead class="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="py-3 px-4 text-center w-28">名次</th>
+                                <th class="py-3 px-4">同仁姓名 (點擊展開明細)</th>
+                                <th class="py-3 px-4 text-center">主導案件數</th>
+                                <th class="py-3 px-4 text-center">協助案件數</th>
+                                <th id="thLeaderboardScoreCol" class="py-3 px-4 text-right">2026年認列總分</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboardTableBody" class="divide-y divide-slate-100 font-medium">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 系統設定與權限管理 -->
+        <div id="tabContent3" class="space-y-6 hidden">
+            <div id="readonlyNotice" class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between gap-3 text-amber-800">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-lock text-lg text-amber-600"></i>
+                    <div class="text-xs">
+                        <span class="font-bold block">目前為「一般成員 (Member)」唯讀模式</span>
+                        所有系統設定項目均已被鎖定保護，如需修改請點擊右上角切換為「管理員 (Admin)」並輸入管理密碼。
+                    </div>
+                </div>
+                <button type="button" onclick="requestRoleSwitch('admin')" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold whitespace-nowrap shadow-xs">
+                    <i class="fa-solid fa-key mr-1"></i>輸入密碼解鎖
+                </button>
+            </div>
+
+            <!-- 年度管理區塊 -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                <h3 class="font-bold text-slate-900 text-sm"><i class="fa-solid fa-calendar-days text-indigo-600"></i> 可用認列年度管理 (手動新增年份)</h3>
+                <div class="flex gap-2">
+                    <input type="text" id="newYearInput" placeholder="輸入年份 (例如 2031)..." class="admin-editable flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs">
+                    <button type="button" onclick="addCustomYear()" class="admin-btn px-4 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition">新增年份</button>
+                </div>
+                <div id="settingYearsList" class="flex flex-wrap gap-2 pt-1"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 團隊管理 -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <h3 class="font-bold text-slate-900 text-sm"><i class="fa-solid fa-users-rectangle text-indigo-600"></i> 團隊與部門管理</h3>
+                    <div class="flex gap-2">
+                        <input type="text" id="newTeamInput" placeholder="輸入團隊名稱..." class="admin-editable flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs">
+                        <button type="button" onclick="addTeamFromSetting()" class="admin-btn px-4 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition">新增團隊</button>
+                    </div>
+                    <div id="settingTeamsList" class="space-y-1.5 max-h-48 overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- 成員管理 -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                    <h3 class="font-bold text-slate-900 text-sm"><i class="fa-solid fa-id-card text-indigo-600"></i> 同仁名單維護</h3>
+                    <div class="flex gap-2">
+                        <input type="text" id="newMemberInput" placeholder="輸入同仁姓名..." class="admin-editable flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs">
+                        <button type="button" onclick="addMemberFromSetting()" class="admin-btn px-4 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition">新增同仁</button>
+                    </div>
+                    <div id="settingMembersList" class="space-y-1.5 max-h-48 overflow-y-auto pr-1"></div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm space-y-6">
+                <div class="flex flex-wrap justify-between items-center gap-2">
+                    <h3 class="font-bold text-slate-900 text-base"><i class="fa-solid fa-sliders text-indigo-600"></i> 評分標準與權重設定</h3>
+                    <!-- 管理員密碼修改區塊 -->
+                    <div class="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                        <span class="text-xs font-bold text-slate-600"><i class="fa-solid fa-shield-halved text-indigo-500 mr-1"></i>管理員密碼:</span>
+                        <input type="text" id="adminPasswordInput" value="abcd" class="admin-editable w-28 bg-white border border-slate-300 rounded-lg px-2 py-0.5 text-xs font-mono text-slate-800">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <div class="flex justify-between items-center mb-1"><label class="text-xs font-bold">1. 角色分數選項 (Role)</label><button type="button" onclick="addRatingOption('role')" class="admin-btn text-[11px] font-bold text-indigo-600">新增</button></div>
+                        <div id="settingRoleList" class="space-y-2"></div>
+                    </div>
+                    <div class="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <div class="flex justify-between items-center mb-1"><label class="text-xs font-bold">2. 性質分數選項 (Type)</label><button type="button" onclick="addRatingOption('type')" class="admin-btn text-[11px] font-bold text-indigo-600">新增</button></div>
+                        <div id="settingTypeList" class="space-y-2"></div>
+                    </div>
+                    <div class="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <div class="flex justify-between items-center mb-1"><label class="text-xs font-bold">3. 預算規模分數選項 (Budget)</label><button type="button" onclick="addRatingOption('budget')" class="admin-btn text-[11px] font-bold text-indigo-600">新增</button></div>
+                        <div id="settingBudgetList" class="space-y-2"></div>
+                    </div>
+                    <div class="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <div class="flex justify-between items-center mb-1"><label class="text-xs font-bold">4. 難易度倍數 (Difficulty)</label><button type="button" onclick="addRatingOption('diff')" class="admin-btn text-[11px] font-bold text-indigo-600">新增</button></div>
+                        <div id="settingDiffList" class="space-y-2"></div>
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-slate-100">
+                    <div class="flex justify-between items-center mb-3">
+                        <label class="text-xs font-bold">5. 階段解鎖率 (Phase Unlocking)</label>
+                        <button type="button" onclick="addPhaseSetting()" class="admin-btn text-[11px] font-bold text-emerald-600">新增階段</button>
+                    </div>
+                    <div id="settingPhasesList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3"></div>
+                </div>
+
+                <div class="flex justify-end pt-2">
+                    <button type="button" onclick="saveSystemSettings()" class="admin-btn px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-xs">儲存所有系統設定</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 1. 管理員密碼驗證 Modal -->
+    <div id="adminAuthModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm hidden">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 max-w-sm w-full shadow-xl space-y-4">
+            <div class="flex items-center gap-3 text-indigo-600">
+                <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">管理員身分驗證</h3>
+                    <p class="text-[11px] text-slate-500">請輸入管理員密碼以解鎖編輯權限</p>
+                </div>
+            </div>
+            <div>
+                <input type="password" id="authPasswordInput" onkeydown="if(event.key==='Enter') confirmAdminAuth()" placeholder="請輸入密碼 (預設 abcd)..." class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <p id="authErrorMsg" class="text-xs text-rose-600 font-semibold mt-1.5 hidden"><i class="fa-solid fa-circle-exclamation mr-1"></i>密碼錯誤，請重新輸入！</p>
+            </div>
+            <div class="flex justify-end gap-2 pt-1">
+                <button type="button" onclick="closeAdminAuthModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">取消</button>
+                <button type="button" onclick="confirmAdminAuth()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20">確認解鎖</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Delete Confirm -->
+    <div id="deleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm hidden">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 max-w-sm w-full shadow-xl space-y-4">
+            <div class="flex items-center gap-3 text-rose-600">
+                <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <h3 class="text-base font-bold text-slate-900">確認要刪除專案資料？</h3>
+            </div>
+            <p class="text-xs text-slate-500">此動作將無法復原，請確認是否要刪除此筆專案記錄。</p>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" onclick="closeDeleteModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold">取消</button>
+                <button type="button" id="btnConfirmDelete" onclick="confirmDeleteProject()" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/20">確定刪除</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let availableYears = JSON.parse(localStorage.getItem('v10_available_years')) || ["2025", "2026", "2027", "2028", "2029", "2030"];
+        function getAvailableYears() { return availableYears; }
+        const DEFAULT_TEAMS = ["自動化系統", "數位營運", "數位低碳轉型"];
+        const DEFAULT_MEMBERS = ["陳大明", "李小華", "王小明", "張阿姨", "林哲宇", "黃雅婷"];
+
+        const DEFAULT_ROLE_OPTIONS = [
+            { label: "主導專案 (10.0)", val: 10.0 },
+            { label: "模組負責 (7.5)", val: 7.5 },
+            { label: "協同參與 (5.0)", val: 5.0 },
+            { label: "售服 (5.0)", val: 5.0 }
+        ];
+        const DEFAULT_TYPE_OPTIONS = [
+            { label: "前瞻/科專 (10.0)", val: 10.0 },
+            { label: "有餘細計畫 (7.5)", val: 7.5 },
+            { label: "無餘細計畫 (5.0)", val: 5.0 },
+            { label: "其他 (5.0)", val: 5.0 }
+        ];
+        const DEFAULT_BUDGET_OPTIONS = [
+            { label: "大型 >200萬 (20.0)", val: 20.0 },
+            { label: "中大型 120~200萬 (15.0)", val: 15.0 },
+            { label: "中型 80-120萬 (8.0)", val: 8.0 },
+            { label: "中小型 30-80萬 (4.0)", val: 4.0 },
+            { label: "小型 <30萬 (2.5)", val: 2.5 }
+        ];
+        const DEFAULT_DIFF_OPTIONS = [
+            { label: "極限 (1.5x)", val: 1.5 },
+            { label: "挑戰 (1.2x)", val: 1.2 },
+            { label: "標準 (1.0x)", val: 1.0 }
+        ];
+        const DEFAULT_PHASES = [
+            { id: "ph_1", name: "立案簽約", ratio: 20 },
+            { id: "ph_2", name: "期中查核", ratio: 30 },
+            { id: "ph_3", name: "結案簽收", ratio: 50 }
+        ];
+
+        const DEFAULT_PROJECTS = [{
+            id: "p1", name: "CNC智慧控制模組開發", team: "自動化系統",
+            leaders: ["陳大明"], assistants: ["李小華", "王小明"],
+            leaderRatio: 60, assistantRatio: 40, splitAssistant: true,
+            assistantCustomWeights: {},
+            role: 10.0, roleType: 10.0, budget: 15.0, difficulty: 1.2,
+            phaseYears: { "ph_1": "2026", "ph_2": "2027" }
+        }];
+
+        function normalizeProjectPhaseYears(p) {
+            if (p.phaseYears && typeof p.phaseYears === 'object') {
+                return p.phaseYears;
+            }
+            const converted = {};
+            if (Array.isArray(p.unlockedPhases)) {
+                p.unlockedPhases.forEach(phId => {
+                    converted[phId] = "2026";
+                });
+            }
+            return converted;
+        }
+
+        // 預設進入為一般成員（唯讀保護），切換管理員需輸入密碼 abcd
+        let userRole = 'member';
+        let adminPassword = localStorage.getItem('v10_admin_pwd') || 'abcd';
+        let teams = JSON.parse(localStorage.getItem('v10_teams')) || DEFAULT_TEAMS;
+        let members = JSON.parse(localStorage.getItem('v10_members')) || DEFAULT_MEMBERS;
+        let roleOpts = JSON.parse(localStorage.getItem('v10_roles')) || DEFAULT_ROLE_OPTIONS;
+        let typeOpts = JSON.parse(localStorage.getItem('v10_types')) || DEFAULT_TYPE_OPTIONS;
+        let budgetOpts = JSON.parse(localStorage.getItem('v10_budgets')) || DEFAULT_BUDGET_OPTIONS;
+        let diffOpts = JSON.parse(localStorage.getItem('v10_diffs')) || DEFAULT_DIFF_OPTIONS;
+        let phaseOpts = JSON.parse(localStorage.getItem('v10_phases')) || DEFAULT_PHASES;
+        let rawProjects = JSON.parse(localStorage.getItem('v10_projects')) || DEFAULT_PROJECTS;
+        let projects = rawProjects.map(p => ({ ...p, phaseYears: normalizeProjectPhaseYears(p) }));
+
+        let deleteTargetId = null;
+
+        
+        function addCustomYear() {
+            const input = document.getElementById('newYearInput');
+            const yr = input.value.trim();
+            if (yr && /^[0-9]{4}$/.test(yr) && !availableYears.includes(yr)) {
+                availableYears.push(yr);
+                availableYears.sort();
+                input.value = "";
+                saveData();
+                populateSelectOptions();
+                renderSettingsTab();
+                alert(`成功新增 ${yr} 年度！`);
+            } else {
+                alert("請輸入有效的 4 位數年份，且不能重複！");
+            }
+        }
+
+        function removeCustomYear(idx) {
+            if (availableYears.length <= 1) {
+                alert("至少須保留一個可用年份！");
+                return;
+            }
+            const removed = availableYears.splice(idx, 1);
+            saveData();
+            populateSelectOptions();
+            renderSettingsTab();
+            alert(`已移除 ${removed} 年度！`);
+        }
+
+        function saveData() {
+            localStorage.setItem('v10_available_years', JSON.stringify(availableYears));
+            localStorage.setItem('v10_admin_pwd', adminPassword);
+            localStorage.setItem('v10_teams', JSON.stringify(teams));
+            localStorage.setItem('v10_members', JSON.stringify(members));
+            localStorage.setItem('v10_roles', JSON.stringify(roleOpts));
+            localStorage.setItem('v10_types', JSON.stringify(typeOpts));
+            localStorage.setItem('v10_budgets', JSON.stringify(budgetOpts));
+            localStorage.setItem('v10_diffs', JSON.stringify(diffOpts));
+            localStorage.setItem('v10_phases', JSON.stringify(phaseOpts));
+            localStorage.setItem('v10_projects', JSON.stringify(projects));
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('adminPasswordInput').value = adminPassword;
+            populateSelectOptions();
+            renderSettingsTab();
+            setUserRole(userRole);
+            calculatePreview();
+            renderAll();
+        });
+
+        // 1. 管理員密碼驗證機制
+        function requestRoleSwitch(targetRole) {
+            if (targetRole === 'member') {
+                setUserRole('member');
+                return;
+            }
+            if (targetRole === 'admin') {
+                if (userRole === 'admin') return;
+                document.getElementById('authPasswordInput').value = '';
+                document.getElementById('authErrorMsg').classList.add('hidden');
+                document.getElementById('adminAuthModal').classList.remove('hidden');
+                setTimeout(() => document.getElementById('authPasswordInput').focus(), 50);
+            }
+        }
+
+        function closeAdminAuthModal() {
+            document.getElementById('adminAuthModal').classList.add('hidden');
+        }
+
+        function confirmAdminAuth() {
+            const inputPwd = document.getElementById('authPasswordInput').value;
+            if (inputPwd === adminPassword) {
+                closeAdminAuthModal();
+                setUserRole('admin');
+            } else {
+                document.getElementById('authErrorMsg').classList.remove('hidden');
+                document.getElementById('authPasswordInput').select();
+            }
+        }
+
+        function setUserRole(role) {
+            userRole = role;
+            document.getElementById('roleAdminBtn').className = role === 'admin'
+                ? "px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white shadow-sm"
+                : "px-2.5 py-1 rounded-md text-xs font-semibold text-slate-600 hover:text-slate-900";
+            document.getElementById('roleMemberBtn').className = role === 'member'
+                ? "px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-700 text-white shadow-sm"
+                : "px-2.5 py-1 rounded-md text-xs font-semibold text-slate-600 hover:text-slate-900";
+
+            const isAdmin = role === 'admin';
+            document.getElementById('readonlyNotice').classList.toggle('hidden', isAdmin);
+
+            // 鎖定或解鎖系統設定分頁內的輸入與按鈕
+            document.querySelectorAll('.admin-editable').forEach(el => {
+                el.disabled = !isAdmin;
+                if (!isAdmin) el.classList.add('opacity-60', 'cursor-not-allowed');
+                else el.classList.remove('opacity-60', 'cursor-not-allowed');
+            });
+            document.querySelectorAll('.admin-btn').forEach(btn => {
+                btn.disabled = !isAdmin;
+                if (!isAdmin) btn.classList.add('opacity-50', 'pointer-events-none');
+                else btn.classList.remove('opacity-50', 'pointer-events-none');
+            });
+        }
+
+        // 2. 結算年度雙向同步（頂部 Header 與專案列表總覽連動）
+        function getSelectedYear() {
+            return document.getElementById('globalYearFilter').value || '2026';
+        }
+
+        function getDefaultInputYear() {
+            const yr = getSelectedYear();
+            return yr === 'ALL' ? '2026' : yr;
+        }
+
+        function syncYearDropdowns(newYear) {
+            document.getElementById('globalYearFilter').value = newYear;
+            const tableYrEl = document.getElementById('tableYearFilter');
+            if (tableYrEl) tableYrEl.value = newYear;
+
+            if (!document.getElementById('editProjectId').value) {
+                const defaultYr = newYear === 'ALL' ? '2026' : newYear;
+                document.querySelectorAll('.sel-phase-year').forEach(sel => {
+                    sel.value = defaultYr;
+                });
+            }
+            calculatePreview();
+            renderAll();
+        }
+
+        function onGlobalYearChange() {
+            const yr = document.getElementById('globalYearFilter').value;
+            syncYearDropdowns(yr);
+        }
+
+        function onTableYearChange() {
+            const yr = document.getElementById('tableYearFilter').value;
+            syncYearDropdowns(yr);
+        }
+
+        function onLeaderSelectionChange() {
+            const aSelect = document.getElementById('inputAssistants');
+            const assistants = Array.from(aSelect.selectedOptions).map(o => o.value);
+
+            if (assistants.length === 0) {
+                document.getElementById('inputLeaderRatio').value = 100;
+                document.getElementById('inputAssistantRatio').value = 0;
+            } else {
+                if (parseFloat(document.getElementById('inputLeaderRatio').value) === 100) {
+                    document.getElementById('inputLeaderRatio').value = 60;
+                    document.getElementById('inputAssistantRatio').value = 40;
+                }
+            }
+            calculatePreview();
+        }
+
+        function onAssistantSelectionChange() {
+            const aSelect = document.getElementById('inputAssistants');
+            const assistants = Array.from(aSelect.selectedOptions).map(o => o.value);
+
+            if (assistants.length === 0) {
+                document.getElementById('inputLeaderRatio').value = 100;
+                document.getElementById('inputAssistantRatio').value = 0;
+            } else {
+                if (parseFloat(document.getElementById('inputLeaderRatio').value) === 100) {
+                    document.getElementById('inputLeaderRatio').value = 60;
+                    document.getElementById('inputAssistantRatio').value = 40;
+                }
+            }
+            renderCustomRatioInputs('assistant');
+            calculatePreview();
+        }
+
+        function onLeaderRatioChange() {
+            let lVal = parseFloat(document.getElementById('inputLeaderRatio').value) || 0;
+            if (lVal > 100) lVal = 100; if (lVal < 0) lVal = 0;
+            document.getElementById('inputLeaderRatio').value = lVal;
+            document.getElementById('inputAssistantRatio').value = 100 - lVal;
+            calculatePreview();
+        }
+
+        function onAssistantRatioChange() {
+            let aVal = parseFloat(document.getElementById('inputAssistantRatio').value) || 0;
+            if (aVal > 100) aVal = 100; if (aVal < 0) aVal = 0;
+            document.getElementById('inputAssistantRatio').value = aVal;
+            document.getElementById('inputLeaderRatio').value = 100 - aVal;
+            calculatePreview();
+        }
+
+        function toggleAssistantSplitMode() {
+            const isSplit = document.getElementById('chkSplitAssistant').checked;
+            document.getElementById('customAssistantRatioContainer').classList.toggle('hidden', isSplit);
+            if (!isSplit) renderCustomRatioInputs('assistant');
+            calculatePreview();
+        }
+
+        function renderCustomRatioInputs(type, existingWeights = {}) {
+            const selectElem = document.getElementById('inputAssistants');
+            const container = document.getElementById('customAssistantRatioContainer');
+            const selected = Array.from(selectElem.selectedOptions).map(o => o.value);
+
+            if (selected.length <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            const defaultVal = (100 / selected.length).toFixed(1);
+            container.innerHTML = `<div class="text-[11px] font-semibold text-slate-500 mb-1">請分配各自佔協作總配比的比例 (內部總和須剛好為 100%)：</div>` +
+                selected.map(name => {
+                    const val = existingWeights[name] !== undefined ? existingWeights[name] : defaultVal;
+                    return `
+                        <div class="flex items-center justify-between text-xs gap-2">
+                            <span class="font-medium text-slate-700 truncate w-24">${name}</span>
+                            <div class="flex items-center gap-1">
+                                <input type="number" step="0.1" min="0" max="100" value="${val}" data-member-name="${name}" oninput="calculatePreview()" class="custom-weight-input w-20 bg-white border border-slate-300 rounded px-2 py-0.5 text-right font-mono text-xs">
+                                <span class="text-slate-500">%</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+        }
+
+        function switchTab(idx) {
+            [1, 2, 3].forEach(i => {
+                document.getElementById(`tabBtn${i}`).className = i === idx ? "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 text-white shadow-md shadow-indigo-600/20 whitespace-nowrap" : "px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 whitespace-nowrap";
+                document.getElementById(`tabContent${i}`).classList.toggle('hidden', i !== idx);
+            });
+            if (idx === 3) {
+                renderSettingsTab();
+            }
+        }
+
+        
+        function updateYearDropdowns() {
+            const currentGlobal = document.getElementById('globalYearFilter').value;
+            const currentTable = document.getElementById('tableYearFilter').value;
+            const yrs = getAvailableYears();
+
+            const globalOpts = '<option value="ALL">全部累積 (All Years)</option>' + yrs.map(y => `<option value="${y}">${y} 年度</option>`).join('');
+            const tableOpts = '<option value="ALL">全部累積</option>' + yrs.map(y => `<option value="${y}">${y} 年</option>`).join('');
+
+            document.getElementById('globalYearFilter').innerHTML = globalOpts;
+            document.getElementById('tableYearFilter').innerHTML = tableOpts;
+
+            document.getElementById('globalYearFilter').value = yrs.includes(currentGlobal) || currentGlobal === 'ALL' ? currentGlobal : '2026';
+            document.getElementById('tableYearFilter').value = yrs.includes(currentTable) || currentTable === 'ALL' ? currentTable : '2026';
+        }
+
+        function populateSelectOptions() {
+            updateYearDropdowns();
+            const filterSelect = document.getElementById('globalTeamFilter');
+            const currentFilter = filterSelect.value;
+            filterSelect.innerHTML = '<option value="ALL">全部團隊 (All Teams)</option>' + teams.map(t => `<option value="${t}">${t}</option>`).join('');
+            filterSelect.value = currentFilter || 'ALL';
+
+            document.getElementById('inputTeam').innerHTML = teams.map(t => `<option value="${t}">${t}</option>`).join('');
+
+            const memberOptsStr = members.map(m => `<option value="${m}">${m}</option>`).join('');
+            document.getElementById('inputLeaders').innerHTML = memberOptsStr;
+            document.getElementById('inputAssistants').innerHTML = memberOptsStr;
+
+            document.getElementById('inputRole').innerHTML = roleOpts.map(r => `<option value="${r.val}">${r.label}</option>`).join('');
+            document.getElementById('inputType').innerHTML = typeOpts.map(t => `<option value="${t.val}">${t.label}</option>`).join('');
+            document.getElementById('inputBudget').innerHTML = budgetOpts.map(b => `<option value="${b.val}">${b.label}</option>`).join('');
+            document.getElementById('inputDifficulty').innerHTML = diffOpts.map(d => `<option value="${d.val}">${d.label}</option>`).join('');
+
+            const defaultYr = getDefaultInputYear();
+            const yearOptionsHtml = getAvailableYears().map(y => `<option value="${y}" ${y === defaultYr ? 'selected' : ''}>${y}年</option>`).join('');
+
+            document.getElementById('dynamicPhaseCheckboxes').innerHTML = phaseOpts.map((ph, idx) => `
+                <div id="phase_card_${idx}" class="flex flex-col justify-between gap-2 bg-slate-50 border border-slate-200 p-3 rounded-xl transition">
+                    <label class="flex items-center gap-2.5 cursor-pointer">
+                        <input type="checkbox" data-phase-index="${idx}" data-phase-id="${ph.id}" onchange="handlePhaseCheckboxChange(${idx})" class="chk-phase-item w-4 h-4 rounded text-indigo-600">
+                        <div>
+                            <span class="text-xs font-bold block text-slate-800">${ph.name}</span>
+                            <span class="text-[11px] text-indigo-600 font-mono font-semibold">解鎖 ${ph.ratio}%</span>
+                        </div>
+                    </label>
+                    <div class="flex items-center justify-between pt-2 border-t border-slate-200/80">
+                        <span class="text-[11px] text-slate-500 font-medium">認列年度:</span>
+                        <select data-phase-index="${idx}" data-phase-id="${ph.id}" onchange="handlePhaseYearChange(${idx})" disabled class="sel-phase-year bg-slate-100 text-slate-400 border border-slate-200 rounded-lg px-2 py-0.5 text-xs font-bold font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            ${yearOptionsHtml}
+                        </select>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updatePhaseCardStyles() {
+            const chks = document.querySelectorAll('.chk-phase-item');
+            const sels = document.querySelectorAll('.sel-phase-year');
+            chks.forEach((chk, idx) => {
+                const card = document.getElementById(`phase_card_${idx}`);
+                const sel = sels[idx];
+                if (chk.checked) {
+                    sel.disabled = false;
+                    sel.className = "sel-phase-year bg-indigo-50 text-indigo-700 border border-indigo-300 rounded-lg px-2 py-0.5 text-xs font-bold font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500";
+                    if (card) card.className = "flex flex-col justify-between gap-2 bg-white border-2 border-indigo-200 p-3 rounded-xl shadow-2xs transition";
+                } else {
+                    sel.disabled = true;
+                    sel.className = "sel-phase-year bg-slate-100 text-slate-400 border border-slate-200 rounded-lg px-2 py-0.5 text-xs font-bold font-mono";
+                    if (card) card.className = "flex flex-col justify-between gap-2 bg-slate-50 border border-slate-200 p-3 rounded-xl transition";
+                }
+            });
+        }
+
+        function handlePhaseCheckboxChange(changedIdx) {
+            const chks = document.querySelectorAll('.chk-phase-item');
+            const sels = document.querySelectorAll('.sel-phase-year');
+            const isChecked = chks[changedIdx].checked;
+            const defaultYr = getDefaultInputYear();
+
+            chks.forEach((chk, idx) => {
+                if (isChecked && idx <= changedIdx) {
+                    if (!chk.checked) {
+                        chk.checked = true;
+                        sels[idx].value = defaultYr;
+                    }
+                } else if (!isChecked && idx >= changedIdx) {
+                    chk.checked = false;
+                }
+            });
+            updatePhaseCardStyles();
+            calculatePreview();
+        }
+
+        function handlePhaseYearChange(changedIdx) {
+            const sels = document.querySelectorAll('.sel-phase-year');
+            const chks = document.querySelectorAll('.chk-phase-item');
+            const newYear = sels[changedIdx].value;
+            for (let i = changedIdx + 1; i < sels.length; i++) {
+                if (chks[i].checked && parseInt(sels[i].value) < parseInt(newYear)) {
+                    sels[i].value = newYear;
+                }
+            }
+            calculatePreview();
+        }
+
+        function calcUnlockStatsByYear(phaseYears, targetYear) {
+            let periodRatio = 0;
+            let cumulativeRatio = 0;
+            const py = phaseYears || {};
+
+            phaseOpts.forEach(ph => {
+                const yr = py[ph.id];
+                if (yr) {
+                    const r = (parseFloat(ph.ratio) || 0) / 100;
+                    cumulativeRatio += r;
+                    if (targetYear === 'ALL' || String(yr) === String(targetYear)) {
+                        periodRatio += r;
+                    }
+                }
+            });
+            return { periodRatio, cumulativeRatio };
+        }
+
+        function calcProjectMemberScores(p, targetYear = 'ALL') {
+            const base = (parseFloat(p.role) + parseFloat(p.roleType || p.type) + parseFloat(p.budget)) * parseFloat(p.difficulty);
+            const { periodRatio, cumulativeRatio } = calcUnlockStatsByYear(p.phaseYears, targetYear);
+            const recognized = base * periodRatio;
+            const cumulativeRecognized = base * cumulativeRatio;
+
+            const lRatio = p.leaderRatio !== undefined ? parseFloat(p.leaderRatio) / 100 : 0.6;
+            const aRatio = p.assistantRatio !== undefined ? parseFloat(p.assistantRatio) / 100 : 0.4;
+
+            const leaders = p.leaders || [];
+            const assistants = p.assistants || [];
+
+            const totalLPool = recognized * lRatio;
+            const leaderEarns = {};
+            const perLeader = leaders.length > 0 ? totalLPool / leaders.length : 0;
+            leaders.forEach(l => leaderEarns[l] = perLeader);
+
+            const totalAPool = recognized * aRatio;
+            const assistantEarns = {};
+            const splitA = p.splitAssistant !== undefined ? p.splitAssistant : true;
+
+            if (splitA || assistants.length <= 1) {
+                const perAssistant = assistants.length > 0 ? totalAPool / assistants.length : 0;
+                assistants.forEach(a => assistantEarns[a] = perAssistant);
+            } else {
+                const customWeights = p.assistantCustomWeights || {};
+                assistants.forEach(a => {
+                    const w = parseFloat(customWeights[a]) || 0;
+                    assistantEarns[a] = totalAPool * (w / 100);
+                });
+            }
+
+            return {
+                base,
+                unlockRatio: periodRatio,
+                cumulativeRatio,
+                recognized,
+                cumulativeRecognized,
+                leaderEarns,
+                assistantEarns,
+                lRatioPercent: Math.round(lRatio * 100),
+                aRatioPercent: Math.round(aRatio * 100)
+            };
+        }
+
+        function getFormPhaseYears() {
+            const chks = document.querySelectorAll('.chk-phase-item');
+            const sels = document.querySelectorAll('.sel-phase-year');
+            const phaseYears = {};
+            chks.forEach((c, idx) => {
+                if (c.checked) {
+                    const phId = c.getAttribute('data-phase-id');
+                    phaseYears[phId] = sels[idx].value;
+                }
+            });
+            return phaseYears;
+        }
+
+        function calculatePreview() {
+            const targetYear = getSelectedYear();
+            const role = parseFloat(document.getElementById('inputRole').value) || 0;
+            const type = parseFloat(document.getElementById('inputType').value) || 0;
+            const budget = parseFloat(document.getElementById('inputBudget').value) || 0;
+            const diff = parseFloat(document.getElementById('inputDifficulty').value) || 1.0;
+
+            const lSelect = document.getElementById('inputLeaders');
+            const leaderVal = lSelect.value;
+            const leaders = leaderVal ? [leaderVal] : [];
+
+            const aSelect = document.getElementById('inputAssistants');
+            const assistants = Array.from(aSelect.selectedOptions).map(o => o.value);
+
+            const phaseYears = getFormPhaseYears();
+
+            const assistantCustomWeights = {};
+            document.querySelectorAll('.custom-weight-input').forEach(input => {
+                const name = input.getAttribute('data-member-name');
+                assistantCustomWeights[name] = parseFloat(input.value) || 0;
+            });
+
+            const tempP = {
+                role, roleType: type, budget, difficulty: diff, leaders, assistants,
+                leaderRatio: document.getElementById('inputLeaderRatio').value,
+                assistantRatio: document.getElementById('inputAssistantRatio').value,
+                splitAssistant: document.getElementById('chkSplitAssistant').checked,
+                assistantCustomWeights,
+                phaseYears
+            };
+
+            const res = calcProjectMemberScores(tempP, targetYear);
+            document.getElementById('previewBase').textContent = res.base.toFixed(2);
+            document.getElementById('previewYearLabel').textContent = targetYear === 'ALL' ? '全期累積得分:' : `${targetYear}年認列得分:`;
+            document.getElementById('previewRecognized').textContent = res.recognized.toFixed(2);
+            document.getElementById('previewCumulativeNote').textContent = `全案累積解鎖進度：${Math.round(res.cumulativeRatio * 100)}% (${res.cumulativeRecognized.toFixed(2)} 分)`;
+
+            const lSumPreview = Object.values(res.leaderEarns).reduce((a, b) => a + b, 0);
+            const aSumPreview = Object.values(res.assistantEarns).reduce((a, b) => a + b, 0);
+            document.getElementById('previewLeaderEarn').textContent = `主導 ${lSumPreview.toFixed(2)}分`;
+            document.getElementById('previewAssistantEarn').textContent = `協助 ${aSumPreview.toFixed(2)}分`;
+        }
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+
+            const splitAssistant = document.getElementById('chkSplitAssistant').checked;
+            const assistants = Array.from(document.getElementById('inputAssistants').selectedOptions).map(o => o.value);
+            const assistantCustomWeights = {};
+
+            if (!splitAssistant && assistants.length > 1) {
+                let sumWeight = 0;
+                document.querySelectorAll('.custom-weight-input').forEach(input => {
+                    const mName = input.getAttribute('data-member-name');
+                    const w = parseFloat(input.value) || 0;
+                    assistantCustomWeights[mName] = w;
+                    sumWeight += w;
+                });
+
+                if (Math.abs(sumWeight - 100) > 0.01) {
+                    alert(`【比例錯誤提示】協助同仁的自訂比例總和必須剛好為 100%！目前總和為 ${sumWeight.toFixed(2)}%，請重新調整分配比例。`);
+                    return;
+                }
+            }
+
+            const editId = document.getElementById('editProjectId').value;
+            const name = document.getElementById('inputName').value.trim();
+            const team = document.getElementById('inputTeam').value;
+            
+            const leaderVal = document.getElementById('inputLeaders').value;
+            const leaders = leaderVal ? [leaderVal] : [];
+            const phaseYears = getFormPhaseYears();
+
+            const projectData = {
+                id: editId || ('p_' + Date.now()), name, team, leaders, assistants,
+                leaderRatio: parseFloat(document.getElementById('inputLeaderRatio').value) || 60,
+                assistantRatio: parseFloat(document.getElementById('inputAssistantRatio').value) || 40,
+                splitAssistant, assistantCustomWeights,
+                role: parseFloat(document.getElementById('inputRole').value),
+                roleType: parseFloat(document.getElementById('inputType').value),
+                budget: parseFloat(document.getElementById('inputBudget').value),
+                difficulty: parseFloat(document.getElementById('inputDifficulty').value),
+                phaseYears
+            };
+
+            if (editId) {
+                const idx = projects.findIndex(p => p.id === editId);
+                if (idx !== -1) projects[idx] = projectData;
+            } else {
+                projects.unshift(projectData);
+            }
+
+            saveData();
+            resetForm();
+            renderAll();
+        }
+
+        function editProject(id) {
+            const p = projects.find(item => item.id === id);
+            if (!p) return;
+
+            document.getElementById('editProjectId').value = p.id;
+            document.getElementById('inputName').value = p.name;
+            document.getElementById('inputTeam').value = p.team;
+
+            document.getElementById('inputLeaders').value = (p.leaders && p.leaders.length > 0) ? p.leaders[0] : '';
+            Array.from(document.getElementById('inputAssistants').options).forEach(o => o.selected = (p.assistants || []).includes(o.value));
+
+            document.getElementById('inputLeaderRatio').value = p.leaderRatio !== undefined ? p.leaderRatio : 60;
+            document.getElementById('inputAssistantRatio').value = p.assistantRatio !== undefined ? p.assistantRatio : 40;
+            
+            document.getElementById('chkSplitAssistant').checked = p.splitAssistant !== undefined ? p.splitAssistant : true;
+            document.getElementById('customAssistantRatioContainer').classList.toggle('hidden', p.splitAssistant !== false);
+
+            if (p.splitAssistant === false) renderCustomRatioInputs('assistant', p.assistantCustomWeights || {});
+
+            document.getElementById('inputRole').value = p.role || 10.0;
+            document.getElementById('inputType').value = p.roleType || p.type || 10.0;
+            document.getElementById('inputBudget').value = p.budget || 15.0;
+            document.getElementById('inputDifficulty').value = p.difficulty || 1.2;
+
+            const py = p.phaseYears || {};
+            const defaultYr = getDefaultInputYear();
+            const phaseChks = document.querySelectorAll('.chk-phase-item');
+            const phaseSels = document.querySelectorAll('.sel-phase-year');
+
+            phaseChks.forEach((c, idx) => {
+                const phId = c.getAttribute('data-phase-id');
+                if (py[phId]) {
+                    c.checked = true;
+                    phaseSels[idx].value = py[phId];
+                } else {
+                    c.checked = false;
+                    phaseSels[idx].value = defaultYr;
+                }
+            });
+            updatePhaseCardStyles();
+
+            document.getElementById('formTitle').textContent = "編輯專案資料（可追加年度解鎖階段）";
+            document.getElementById('btnSubmit').innerHTML = `<i class="fa-solid fa-floppy-disk mr-1"></i> 儲存變更`;
+            document.getElementById('btnCancelEdit').classList.remove('hidden');
+
+            calculatePreview();
+            switchTab(1);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function resetForm() {
+            document.getElementById('projectForm').reset();
+            document.getElementById('editProjectId').value = "";
+            document.getElementById('inputLeaderRatio').value = "60";
+            document.getElementById('inputAssistantRatio').value = "40";
+            document.getElementById('chkSplitAssistant').checked = true;
+            document.getElementById('customAssistantRatioContainer').classList.add('hidden');
+            document.getElementById('formTitle').textContent = "新增專案試算";
+            document.getElementById('btnSubmit').innerHTML = `<i class="fa-solid fa-plus mr-1"></i> 新增專案`;
+            document.getElementById('btnCancelEdit').classList.add('hidden');
+
+            const defaultYr = getDefaultInputYear();
+            document.querySelectorAll('.sel-phase-year').forEach(sel => sel.value = defaultYr);
+            updatePhaseCardStyles();
+            calculatePreview();
+        }
+
+        function openDeleteModal(id) {
+            deleteTargetId = id;
+            document.getElementById('deleteModal').classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            deleteTargetId = null;
+            document.getElementById('deleteModal').classList.add('hidden');
+        }
+
+        function confirmDeleteProject() {
+            if (deleteTargetId) {
+                projects = projects.filter(p => p.id !== deleteTargetId);
+                saveData();
+                renderAll();
+            }
+            closeDeleteModal();
+        }
+
+        function renderPhaseBadgesHtml(p, targetYear) {
+            const py = p.phaseYears || {};
+            const tags = phaseOpts.map(ph => {
+                const yr = py[ph.id];
+                if (!yr) {
+                    return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-400 border border-slate-200 whitespace-nowrap">${ph.name} ${ph.ratio}% (未解鎖)</span>`;
+                }
+                const isCurrentYear = (targetYear === 'ALL' || String(yr) === String(targetYear));
+                if (isCurrentYear) {
+                    return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold whitespace-nowrap"><i class="fa-solid fa-check"></i>${yr}年:${ph.name}(${ph.ratio}%)</span>`;
+                } else {
+                    return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 border border-slate-300 whitespace-nowrap">${yr}年:${ph.name}(${ph.ratio}%)</span>`;
+                }
+            });
+            return `<div class="flex flex-wrap justify-center gap-1 mt-1">${tags.join('')}</div>`;
+        }
+
+        function renderAll() {
+            const targetYear = getSelectedYear();
+            const filterTeam = document.getElementById('globalTeamFilter').value;
+            const statusFilter = document.getElementById('tableStatusFilter').value;
+            const searchKeyword = document.getElementById('tableSearchInput').value.trim().toLowerCase();
+            const sortMode = document.getElementById('tableSortSelect').value;
+
+            const yearLabelText = targetYear === 'ALL' ? '全年度累積' : `${targetYear} 年度`;
+            document.getElementById('kpiRecognizedTitle').textContent = `${yearLabelText}認列得分`;
+            document.getElementById('kpiRatioTitle').textContent = targetYear === 'ALL' ? '整體累積解鎖進度' : `${targetYear}年認列佔總配額`;
+            document.getElementById('thRecognizedCol').textContent = targetYear === 'ALL' ? '累積認列得分' : `${targetYear}年認列得分`;
+            document.getElementById('leaderboardTitle').textContent = `${yearLabelText}個人績效認列排行榜`;
+            document.getElementById('thLeaderboardScoreCol').textContent = targetYear === 'ALL' ? '累積認列總分' : `${targetYear}年認列總分`;
+
+            const teamFilteredProjects = filterTeam === 'ALL' ? projects : projects.filter(p => p.team === filterTeam);
+
+            let filtered = [...teamFilteredProjects];
+
+            if (statusFilter === 'ACTIVE_IN_YEAR') {
+                filtered = filtered.filter(p => calcProjectMemberScores(p, targetYear).unlockRatio > 0);
+            } else if (statusFilter === 'INCOMPLETE') {
+                filtered = filtered.filter(p => calcProjectMemberScores(p, targetYear).cumulativeRatio < 0.999);
+            } else if (statusFilter === 'COMPLETED') {
+                filtered = filtered.filter(p => calcProjectMemberScores(p, targetYear).cumulativeRatio >= 0.999);
+            }
+
+            if (searchKeyword) {
+                filtered = filtered.filter(p => {
+                    const matchName = p.name.toLowerCase().includes(searchKeyword);
+                    const matchTeam = p.team.toLowerCase().includes(searchKeyword);
+                    const matchLeaders = (p.leaders || []).some(l => l.toLowerCase().includes(searchKeyword));
+                    const matchAssistants = (p.assistants || []).some(a => a.toLowerCase().includes(searchKeyword));
+                    return matchName || matchTeam || matchLeaders || matchAssistants;
+                });
+            }
+
+            if (sortMode === 'base_desc') {
+                filtered.sort((a, b) => calcProjectMemberScores(b, targetYear).base - calcProjectMemberScores(a, targetYear).base);
+            } else if (sortMode === 'stage_desc') {
+                filtered.sort((a, b) => calcProjectMemberScores(b, targetYear).unlockRatio - calcProjectMemberScores(a, targetYear).unlockRatio);
+            } else if (sortMode === 'recognized_desc') {
+                filtered.sort((a, b) => calcProjectMemberScores(b, targetYear).recognized - calcProjectMemberScores(a, targetYear).recognized);
+            } else if (sortMode === 'name_asc') {
+                filtered.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+            }
+
+            let totalBase = 0, totalRecognized = 0;
+            teamFilteredProjects.forEach(p => {
+                const res = calcProjectMemberScores(p, targetYear);
+                totalBase += res.base;
+                totalRecognized += res.recognized;
+            });
+
+            document.getElementById('kpiProjectCount').textContent = filtered.length;
+            document.getElementById('kpiTotalBase').textContent = totalBase.toFixed(2);
+            document.getElementById('kpiTotalRecognized').textContent = totalRecognized.toFixed(2);
+            const overallRatio = totalBase > 0 ? Math.round((totalRecognized / totalBase) * 100) : 0;
+            document.getElementById('kpiUnlockRatio').textContent = `${overallRatio}%`;
+            document.getElementById('kpiProgressBar').style.width = `${Math.min(100, overallRatio)}%`;
+
+            const tbody = document.getElementById('projectTableBody');
+            document.getElementById('tableCountBadge').textContent = `共 ${filtered.length} 筆`;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-slate-400">找不到符合條件的專案記錄</td></tr>`;
+            } else {
+                tbody.innerHTML = filtered.map(p => {
+                    const res = calcProjectMemberScores(p, targetYear);
+                    const periodPct = Math.round(res.unlockRatio * 100);
+                    const cumPct = Math.round(res.cumulativeRatio * 100);
+
+                    // 3. 參與成員：主導一排、協助一排，各自成員徽章不換行（whitespace-nowrap）
+                    const lBadges = (p.leaders || []).map(l => `<span class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold inline-flex items-center gap-1 whitespace-nowrap">${l} <span class="text-[10px] bg-indigo-200 text-indigo-800 px-1 rounded font-mono">+${(res.leaderEarns[l] || 0).toFixed(2)}分</span></span>`).join('');
+                    const aBadges = (p.assistants || []).map(a => `<span class="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded inline-flex items-center gap-1 whitespace-nowrap">${a} <span class="text-[10px] bg-slate-200 text-slate-800 px-1 rounded font-mono">+${(res.assistantEarns[a] || 0).toFixed(2)}分</span></span>`).join('');
+
+                    const roleVal = parseFloat(p.role) || 0;
+                    const typeVal = parseFloat(p.roleType || p.type) || 0;
+                    const budgetVal = parseFloat(p.budget) || 0;
+                    const diffVal = parseFloat(p.difficulty) || 1.0;
+                    const formulaText = `(${roleVal}+${typeVal}+${budgetVal}) × ${diffVal}x`;
+
+                    const statusBadge = cumPct >= 100
+                        ? `<span class="ml-1.5 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">已結案</span>`
+                        : `<span class="ml-1.5 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">執行中 (累積${cumPct}%)</span>`;
+
+                    const progressDisplay = targetYear === 'ALL'
+                        ? `<div class="font-mono font-bold text-slate-800 whitespace-nowrap">累積 ${cumPct}%</div>`
+                        : `<div class="font-mono font-bold text-indigo-700 whitespace-nowrap">${targetYear}年認列 ${periodPct}% <span class="text-xs font-normal text-slate-400">(全案累積 ${cumPct}%)</span></div>`;
+
+                    return `
+                        <tr class="hover:bg-slate-50 transition ${periodPct === 0 && targetYear !== 'ALL' ? 'opacity-70' : ''}">
+                            <td class="py-3 px-4">
+                                <div class="font-bold text-slate-900 flex items-center flex-wrap gap-y-1">${p.name}${statusBadge}</div>
+                                <div class="text-xs text-indigo-600 mt-0.5">${p.team}</div>
+                            </td>
+                            <td class="py-3 px-4">
+                                <div class="text-xs flex items-center gap-1.5 whitespace-nowrap">
+                                    <span class="text-slate-600 font-medium">主導 (${res.lRatioPercent}%):</span>
+                                    <div class="inline-flex items-center gap-1">${lBadges}</div>
+                                </div>
+                                ${p.assistants && p.assistants.length ? `
+                                <div class="text-xs flex items-center gap-1.5 mt-1.5 whitespace-nowrap">
+                                    <span class="text-slate-600 font-medium">協助 (${res.aRatioPercent}%):</span>
+                                    <div class="inline-flex items-center gap-1">${aBadges}</div>
+                                </div>` : ''}
+                            </td>
+                            <!-- 5. 評分公式強制單行顯示 -->
+                            <td class="py-3 px-4 text-xs font-mono whitespace-nowrap">${formulaText}</td>
+                            <!-- 4. Base 配額強制單行顯示 -->
+                            <td class="py-3 px-4 text-right font-black text-blue-600 font-mono whitespace-nowrap">${res.base.toFixed(2)}</td>
+                            <td class="py-3 px-4 text-center">
+                                ${progressDisplay}
+                                ${renderPhaseBadgesHtml(p, targetYear)}
+                            </td>
+                            <td class="py-3 px-4 text-right font-black ${res.recognized > 0 ? 'text-emerald-600' : 'text-slate-400'} font-mono whitespace-nowrap">${res.recognized.toFixed(2)}</td>
+                            <td class="py-3 px-4 text-center space-x-1 whitespace-nowrap">
+                                <button type="button" onclick="editProject('${p.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition" title="編輯專案 / 追加年度解鎖"><i class="fa-solid fa-pen"></i></button>
+                                <button type="button" onclick="openDeleteModal('${p.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition" title="刪除專案"><i class="fa-solid fa-trash"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            renderLeaderboard(teamFilteredProjects, targetYear);
+        }
+
+        function renderLeaderboard(filteredProjects, targetYear) {
+            const stats = {};
+            members.forEach(m => stats[m] = { name: m, totalScore: 0, leaderCount: 0, assistCount: 0, details: [] });
+
+            filteredProjects.forEach(p => {
+                const res = calcProjectMemberScores(p, targetYear);
+                if (res.unlockRatio <= 0) return;
+
+                const py = p.phaseYears || {};
+                const unlockedNames = phaseOpts
+                    .filter(ph => py[ph.id] && (targetYear === 'ALL' || String(py[ph.id]) === String(targetYear)))
+                    .map(ph => `${ph.name} ${ph.ratio}%`)
+                    .join(' + ');
+
+                Object.entries(res.leaderEarns).forEach(([m, score]) => {
+                    if (!stats[m]) stats[m] = { name: m, totalScore: 0, leaderCount: 0, assistCount: 0, details: [] };
+                    stats[m].totalScore += score;
+                    stats[m].leaderCount += 1;
+                    stats[m].details.push({ name: p.name, role: '主導', phaseNote: unlockedNames, score: score });
+                });
+                Object.entries(res.assistantEarns).forEach(([a, score]) => {
+                    if (!stats[a]) stats[a] = { name: a, totalScore: 0, leaderCount: 0, assistCount: 0, details: [] };
+                    stats[a].totalScore += score;
+                    stats[a].assistCount += 1;
+                    stats[a].details.push({ name: p.name, role: '協助', phaseNote: unlockedNames, score: score });
+                });
+            });
+
+            const sorted = Object.values(stats).filter(m => (m.leaderCount + m.assistCount) > 0).sort((a, b) => b.totalScore - a.totalScore);
+            
+            const tbody = document.getElementById('leaderboardTableBody');
+            if (sorted.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-slate-400">選定年度尚無已解鎖認列的人員績效資料</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = sorted.map((m, idx) => {
+                let rankBadge = `<span class="font-bold text-slate-600 px-3">${idx + 1}</span>`;
+                if (idx === 0) rankBadge = `<span class="bg-amber-400 text-slate-900 px-3 py-1 rounded-full text-xs font-black shadow-sm whitespace-nowrap">1 🥇 冠軍</span>`;
+                else if (idx === 1) rankBadge = `<span class="bg-slate-300 text-slate-900 px-3 py-1 rounded-full text-xs font-black shadow-sm whitespace-nowrap">2 🥈 亞軍</span>`;
+                else if (idx === 2) rankBadge = `<span class="bg-amber-700 text-white px-3 py-1 rounded-full text-xs font-black shadow-sm whitespace-nowrap">3 🥉 季軍</span>`;
+
+                const detailsHtml = m.details.map(d => `
+                    <div class="flex flex-wrap justify-between items-center py-1.5 px-3 bg-white border border-slate-200 rounded-lg text-xs my-1 shadow-2xs gap-2">
+                        <div>
+                            <span class="font-semibold text-slate-800"><i class="fa-solid fa-folder-open text-indigo-500 mr-1.5"></i>${d.name}</span>
+                            <span class="text-[11px] text-slate-400 ml-2">[${d.phaseNote}]</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[11px] font-bold">${d.role}</span>
+                            <span class="font-mono font-black text-emerald-600">+${d.score.toFixed(2)} 分</span>
+                        </div>
+                    </div>
+                `).join('');
+
+                const rowId = `leader_row_${idx}`;
+                return `
+                    <tr onclick="toggleLeaderDetail('${rowId}')" class="hover:bg-indigo-50/50 transition cursor-pointer select-none">
+                        <td class="py-3 px-4 text-center whitespace-nowrap">${rankBadge}</td>
+                        <td class="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
+                            <i id="${rowId}_icon" class="fa-solid fa-chevron-right text-xs text-slate-400 transition-transform"></i>
+                            <span>${m.name}</span>
+                        </td>
+                        <td class="py-3 px-4 text-center"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs font-bold">${m.leaderCount} 案</span></td>
+                        <td class="py-3 px-4 text-center"><span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs font-bold">${m.assistCount} 案</span></td>
+                        <td class="py-3 px-4 text-right font-black text-emerald-600 font-mono text-base">${m.totalScore.toFixed(2)} 分</td>
+                    </tr>
+                    <tr id="${rowId}" class="hidden bg-slate-50/80">
+                        <td colspan="5" class="p-3">
+                            <div class="pl-8 pr-4 space-y-1">
+                                <p class="text-[11px] font-bold text-slate-500 mb-1">📌 ${m.name} 參與之專案得分細節：</p>
+                                ${detailsHtml}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function toggleLeaderDetail(rowId) {
+            const detailRow = document.getElementById(rowId);
+            const icon = document.getElementById(`${rowId}_icon`);
+            if (detailRow.classList.contains('hidden')) {
+                detailRow.classList.remove('hidden');
+                icon.classList.add('rotate-90');
+            } else {
+                detailRow.classList.add('hidden');
+                icon.classList.remove('rotate-90');
+            }
+        }
+
+        function renderSettingsTab() {
+
+            const yearContainer = document.getElementById('settingYearsList');
+            if (yearContainer) {
+                yearContainer.innerHTML = availableYears.map((y, idx) => `
+                    <div class="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-xl text-xs font-bold text-indigo-900">
+                        <span>${y} 年</span>
+                        <button type="button" onclick="removeCustomYear(${idx})" class="admin-btn text-indigo-400 hover:text-rose-600 px-1"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                `).join('');
+            }
+
+            const teamContainer = document.getElementById('settingTeamsList');
+            if (teamContainer) {
+                teamContainer.innerHTML = teams.map((t, idx) => `
+                    <div class="flex justify-between items-center bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+                        <span class="font-semibold text-slate-800">${t}</span>
+                        <button type="button" onclick="removeTeam(${idx})" class="admin-btn text-slate-400 hover:text-rose-600 px-2"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                `).join('');
+            }
+
+            const memberContainer = document.getElementById('settingMembersList');
+            if (memberContainer) {
+                memberContainer.innerHTML = members.map((m, idx) => `
+                    <div class="flex justify-between items-center bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
+                        <span class="font-semibold text-slate-800">${m}</span>
+                        <button type="button" onclick="removeMember(${idx})" class="admin-btn text-slate-400 hover:text-rose-600 px-2"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                `).join('');
+            }
+
+            renderScoreSettingInputs('settingRoleList', roleOpts, 'role');
+            renderScoreSettingInputs('settingTypeList', typeOpts, 'type');
+            renderScoreSettingInputs('settingBudgetList', budgetOpts, 'budget');
+            renderScoreSettingInputs('settingDiffList', diffOpts, 'diff');
+            renderPhaseSettings();
+            setUserRole(userRole);
+        }
+
+        function renderScoreSettingInputs(elemId, optsList, prefix) {
+            const container = document.getElementById(elemId);
+            if (!container) return;
+            container.innerHTML = optsList.map((item, idx) => `
+                <div class="flex items-center gap-2">
+                    <input type="text" value="${item.label}" onchange="updateOptionLabel('${prefix}', ${idx}, this.value)" class="admin-editable flex-1 bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-medium">
+                    <input type="number" step="0.1" value="${item.val}" onchange="updateOptionVal('${prefix}', ${idx}, this.value)" class="admin-editable w-20 bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-mono font-bold">
+                    <button type="button" onclick="removeRatingOption('${prefix}', ${idx})" class="admin-btn text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                </div>
+            `).join('');
+        }
+
+        function renderPhaseSettings() {
+            const container = document.getElementById('settingPhasesList');
+            if (!container) return;
+            container.innerHTML = phaseOpts.map((ph, idx) => `
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 relative">
+                    <div class="flex justify-between items-center mb-1">
+                        <input type="text" value="${ph.name}" onchange="updatePhaseName(${idx}, this.value)" class="admin-editable bg-white border border-slate-200 text-xs font-bold text-slate-800 px-2 py-0.5 rounded w-full mr-2">
+                        <button type="button" onclick="removePhaseSetting(${idx})" class="admin-btn text-slate-400 hover:text-rose-600 text-xs"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="flex items-center gap-1 mt-2">
+                        <span class="text-[11px] text-slate-400">解鎖</span>
+                        <input type="number" value="${ph.ratio}" onchange="updatePhaseRatio(${idx}, this.value)" class="admin-editable w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-900 font-mono font-bold">
+                        <span class="text-xs text-slate-500 font-bold">%</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addTeamFromSetting() {
+            const input = document.getElementById('newTeamInput');
+            const name = input.value.trim();
+            if (name && !teams.includes(name)) {
+                teams.push(name);
+                input.value = "";
+                saveData();
+                populateSelectOptions();
+                renderSettingsTab();
+            }
+        }
+
+        function removeTeam(idx) {
+            teams.splice(idx, 1);
+            saveData();
+            populateSelectOptions();
+            renderSettingsTab();
+        }
+
+        function addMemberFromSetting() {
+            const input = document.getElementById('newMemberInput');
+            const name = input.value.trim();
+            if (name && !members.includes(name)) {
+                members.push(name);
+                input.value = "";
+                saveData();
+                populateSelectOptions();
+                renderSettingsTab();
+            }
+        }
+
+        function removeMember(idx) {
+            members.splice(idx, 1);
+            saveData();
+            populateSelectOptions();
+            renderSettingsTab();
+        }
+
+        function addRatingOption(prefix) {
+            if (prefix === 'role') roleOpts.push({ label: "新角色項目 (5.0)", val: 5.0 });
+            if (prefix === 'type') typeOpts.push({ label: "新性質項目 (5.0)", val: 5.0 });
+            if (prefix === 'budget') budgetOpts.push({ label: "新預算級距 (5.0)", val: 5.0 });
+            if (prefix === 'diff') diffOpts.push({ label: "新難易度 (1.0x)", val: 1.0 });
+            renderSettingsTab();
+        }
+
+        function removeRatingOption(prefix, idx) {
+            if (prefix === 'role') roleOpts.splice(idx, 1);
+            if (prefix === 'type') typeOpts.splice(idx, 1);
+            if (prefix === 'budget') budgetOpts.splice(idx, 1);
+            if (prefix === 'diff') diffOpts.splice(idx, 1);
+            renderSettingsTab();
+        }
+
+        function updateOptionLabel(prefix, idx, val) {
+            if (prefix === 'role') roleOpts[idx].label = val;
+            if (prefix === 'type') typeOpts[idx].label = val;
+            if (prefix === 'budget') budgetOpts[idx].label = val;
+            if (prefix === 'diff') diffOpts[idx].label = val;
+        }
+
+        function updateOptionVal(prefix, idx, val) {
+            const v = parseFloat(val) || 0;
+            if (prefix === 'role') roleOpts[idx].val = v;
+            if (prefix === 'type') typeOpts[idx].val = v;
+            if (prefix === 'budget') budgetOpts[idx].val = v;
+            if (prefix === 'diff') diffOpts[idx].val = v;
+        }
+
+        function addPhaseSetting() {
+            phaseOpts.push({ id: 'ph_' + Date.now(), name: '新里程碑階段', ratio: 25 });
+            renderSettingsTab();
+        }
+
+        function removePhaseSetting(idx) {
+            phaseOpts.splice(idx, 1);
+            renderSettingsTab();
+        }
+
+        function updatePhaseName(idx, name) { phaseOpts[idx].name = name; }
+        function updatePhaseRatio(idx, ratio) { phaseOpts[idx].ratio = parseFloat(ratio) || 0; }
+
+        function saveSystemSettings() {
+            const newPwd = document.getElementById('adminPasswordInput').value.trim();
+            if (newPwd) {
+                adminPassword = newPwd;
+            }
+            saveData();
+            populateSelectOptions();
+            renderAll();
+            alert("系統評分標準與管理密碼已成功儲存！");
+        }
+
+        function exportCombinedExcel() {
+            if (typeof XLSX === 'undefined') {
+                alert("Excel 匯出元件載入中，請稍後再試！");
+                return;
+            }
+
+            const targetYear = getSelectedYear();
+            const yearLabel = targetYear === 'ALL' ? '全年度累積' : `${targetYear}年度`;
+            const filterTeam = document.getElementById('globalTeamFilter').value;
+            const filteredProjects = filterTeam === 'ALL' ? projects : projects.filter(p => p.team === filterTeam);
+
+            if (filteredProjects.length === 0) {
+                alert("目前沒有可匯出的專案資料！");
+                return;
+            }
+
+            const projectData = [
+                [
+                    "專案名稱",
+                    "歸屬團隊",
+                    "主導成員",
+                    "協助成員",
+                    "Base配額",
+                    `${yearLabel}認列比例(%)`,
+                    `${yearLabel}認列得分`,
+                    "全案累積進度(%)",
+                    "各階段認列年度明細"
+                ]
+            ];
+
+            filteredProjects.forEach(p => {
+                const res = calcProjectMemberScores(p, targetYear);
+                const py = p.phaseYears || {};
+
+                const leaderText = (p.leaders || []).map(l => `${l} (+${(res.leaderEarns[l] || 0).toFixed(2)}分)`).join('; ');
+                const assistantText = (p.assistants || []).map(a => `${a} (+${(res.assistantEarns[a] || 0).toFixed(2)}分)`).join('; ');
+
+                const phaseHistoryText = phaseOpts.map(ph => {
+                    const yr = py[ph.id];
+                    return yr ? `${ph.name}(${ph.ratio}%):${yr}年` : `${ph.name}(${ph.ratio}%):未解鎖`;
+                }).join(' | ');
+
+                projectData.push([
+                    p.name,
+                    p.team,
+                    leaderText,
+                    assistantText,
+                    parseFloat(res.base.toFixed(2)),
+                    Math.round(res.unlockRatio * 100),
+                    parseFloat(res.recognized.toFixed(2)),
+                    Math.round(res.cumulativeRatio * 100),
+                    phaseHistoryText
+                ]);
+            });
+
+            const stats = {};
+            members.forEach(m => stats[m] = { name: m, totalScore: 0, leaderCount: 0, assistCount: 0, leaderProjects: [], assistProjects: [] });
+            filteredProjects.forEach(p => {
+                const res = calcProjectMemberScores(p, targetYear);
+                if (res.unlockRatio <= 0) return;
+
+                Object.entries(res.leaderEarns).forEach(([m, score]) => {
+                    if (!stats[m]) stats[m] = { name: m, totalScore: 0, leaderCount: 0, assistCount: 0, leaderProjects: [], assistProjects: [] };
+                    stats[m].totalScore += score;
+                    stats[m].leaderCount += 1;
+                    stats[m].leaderProjects.push(`${p.name}(+${score.toFixed(2)})`);
+                });
+                Object.entries(res.assistantEarns).forEach(([a, score]) => {
+                    if (!stats[a]) stats[a] = { name: a, totalScore: 0, leaderCount: 0, assistCount: 0, leaderProjects: [], assistProjects: [] };
+                    stats[a].totalScore += score;
+                    stats[a].assistCount += 1;
+                    stats[a].assistProjects.push(`${p.name}(+${score.toFixed(2)})`);
+                });
+            });
+
+            const sortedMembers = Object.values(stats).filter(m => (m.leaderCount + m.assistCount) > 0).sort((a, b) => b.totalScore - a.totalScore);
+            
+            const leaderboardData = [
+                ["名次", "同仁姓名", "主導案件數", "協助案件數", `${yearLabel}認列總分`, "主導專案項目", "協作專案項目"]
+            ];
+            sortedMembers.forEach((m, idx) => {
+                leaderboardData.push([
+                    idx + 1,
+                    m.name,
+                    m.leaderCount,
+                    m.assistCount,
+                    parseFloat(m.totalScore.toFixed(2)),
+                    m.leaderProjects.join('; '),
+                    m.assistProjects.join('; ')
+                ]);
+            });
+
+            const wb = XLSX.utils.book_new();
+            const wsProjects = XLSX.utils.aoa_to_sheet(projectData);
+            const wsLeaderboard = XLSX.utils.aoa_to_sheet(leaderboardData);
+
+            XLSX.utils.book_append_sheet(wb, wsProjects, `${yearLabel}_專案總覽`);
+            XLSX.utils.book_append_sheet(wb, wsLeaderboard, `${yearLabel}_個人排行榜`);
+
+            const today = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `專案績效與個人排行榜_${yearLabel}_${today}.xlsx`);
+        }
+
+        function exportFullBackupJSON() {
+            const jsonStr = JSON.stringify({ teams, members, roleOpts, typeOpts, budgetOpts, diffOpts, phaseOpts, projects }, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `專案績效系統備份檔_v10.1.json`;
+            link.click();
+        }
+
+        function importFullBackupJSON(e) {
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const imported = JSON.parse(evt.target.result);
+                if (imported.projects) {
+                    projects = imported.projects.map(p => ({ ...p, phaseYears: normalizeProjectPhaseYears(p) }));
+                }
+                if (imported.teams) teams = imported.teams;
+                if (imported.members) members = imported.members;
+                if (imported.roleOpts) roleOpts = imported.roleOpts;
+                if (imported.typeOpts) typeOpts = imported.typeOpts;
+                if (imported.budgetOpts) budgetOpts = imported.budgetOpts;
+                if (imported.diffOpts) diffOpts = imported.diffOpts;
+                if (imported.phaseOpts) phaseOpts = imported.phaseOpts;
+                saveData();
+                populateSelectOptions();
+                renderSettingsTab();
+                renderAll();
+                alert("匯入成功！（已自動相容轉換舊版階段資料格式）");
+            };
+            reader.readAsText(e.target.files[0]);
+        }
+    </script>
+</body>
+</html>
